@@ -1,7 +1,6 @@
 package com.contractguard.service;
 
 import com.contractguard.entity.Clause;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -10,11 +9,10 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The first three tests cover the current behaviour.
- *
- * The @Disabled ones are known segmentation bugs, written as failing tests so
- * the backlog lives in code rather than in a comment. Each one enabled is a bug
- * actually fixed.
+ * Segmentation behaviour, including the three cases that broke the original
+ * heading-regex approach: statutory citations read as headings, sub-clauses
+ * split away from their parent, and preamble text dropped before the first
+ * numbered clause.
  */
 @DisplayName("ClauseSegmentationService")
 class ClauseSegmentationServiceTest {
@@ -64,6 +62,35 @@ class ClauseSegmentationServiceTest {
     }
 
     @Test
+    @DisplayName("splits numbered paragraphs that have no headings at all")
+    void splitsHeadinglessNumberedParagraphs() {
+        // Real deeds frequently have no titles at all - every clause is a
+        // numbered paragraph whose first line runs past any sensible heading
+        // length. The original regex capped the text after the number at 80
+        // characters and silently skipped every clause of this shape.
+        //
+        // The line lengths below matter: each numbered line is deliberately
+        // over 100 characters, matching the source document. Wrapping them
+        // shorter would put them back under MAX_HEADING_LENGTH and stop the
+        // test exercising the case it exists for.
+        String text = """
+                1. That, the lessor hereby leases to the lessee the following described premises at Plot No 10-2CM-819/A,
+                Cuttack, together with all fixtures and fittings presently installed therein and listed in the schedule.
+                2. That the premises shall be used for the purpose of a hostel of the lessee for a period of 24 (twenty four)
+                months commencing from the date first written above and for no other purpose whatsoever.
+                3. That, the lessee shall hold the said premises for a period of 24 (twenty four) months beginning from
+                the first day of the month next following the execution of this deed of agreement.
+                """;
+
+        List<Clause> clauses = service.segment(text);
+
+        assertThat(clauses).hasSize(3);
+        // No headings recorded - these opening lines are paragraphs, not titles.
+        assertThat(clauses).allSatisfy(c -> assertThat(c.getHeading()).isNull());
+        assertThat(clauses.get(1).getOriginalText()).contains("hostel");
+    }
+
+    @Test
     @DisplayName("falls back to paragraph splitting when there are no headings")
     void fallsBackToParagraphs() {
         String text = """
@@ -81,7 +108,6 @@ class ClauseSegmentationServiceTest {
     }
 
     @Test
-    @Disabled("Known bug: statutory citations are mistaken for headings")
     @DisplayName("does not split on a citation like 'Section 8 of the Companies Act'")
     void ignoresCitations() {
         String text = """
@@ -98,7 +124,6 @@ class ClauseSegmentationServiceTest {
     }
 
     @Test
-    @Disabled("Known bug: sub-clauses are split out instead of merged into the parent")
     @DisplayName("treats 7.1 and 7.2 as part of clause 7, not as separate clauses")
     void mergesSubClauses() {
         String text = """
@@ -118,7 +143,6 @@ class ClauseSegmentationServiceTest {
     }
 
     @Test
-    @Disabled("Known bug: preamble before the first heading is dropped")
     @DisplayName("keeps text that appears before the first numbered heading")
     void capturesPreamble() {
         String text = """

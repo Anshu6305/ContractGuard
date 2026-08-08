@@ -65,6 +65,24 @@ Tests run against in-memory H2, so MySQL does not need to be running.
 
 ---
 
+## Segmentation
+
+Clause boundaries are numbered lines. Headings are extracted separately and only
+when the numbered line is short enough to be a title — many real contracts have
+none, and every clause is simply a numbered paragraph.
+
+Two rules do most of the work. **Sequence:** candidates are kept only where their
+numbers ascend, so a citation like "8. of the Companies Act, 2013" inside clause 1
+is rejected. **Whitespace after the separator:** requiring `7.` to be followed by a
+space means `7.1` is not a boundary, keeping sub-clauses with their parent.
+
+An earlier version capped the post-number text at 80 characters, which worked on
+contracts with short titles but silently skipped 21 of 26 clauses in a real deed
+whose clauses ran past 100 characters before the first line break. Silent partial
+analysis is worse than loud failure; the tests now cover that shape.
+
+---
+
 ## Accuracy
 
 Classification is measured against `samples/GROUND_TRUTH.md`, a hand-labelled
@@ -170,7 +188,8 @@ backoff first, and fails fast on 4xx where retrying cannot help.
 ## Roadmap
 
 - [x] Implement `calculateOverallScore` (capped when any clause is risky)
-- [ ] Fix segmentation: sub-clauses, ALL-CAPS headings, citation false positives
+- [x] Fix segmentation: sub-clauses, citation false positives, preamble capture, headingless numbered paragraphs
+- [ ] ALL-CAPS and Roman-numeral headings
 - [ ] OCR for scanned PDFs (currently rejected)
 - [x] Rewrite the analyzer prompt with few-shot examples
 - [ ] Extend the labelled evaluation set to ~50 clauses and measure precision/recall

@@ -181,6 +181,7 @@ See the roadmap in `README.md`. The next items, and where they live:
 
 | Task | File |
 |---|---|
-| Segmentation bugs (3 failing tests describe them) | `ClauseSegmentationServiceTest.java` |
+| ALL-CAPS and Roman-numeral headings | `ClauseSegmentationService.java` |
+| OCR for scanned PDFs | `PdfExtractionService.java` |
 | Extend the labelled eval set to ~50 clauses | `samples/GROUND_TRUTH.md` |
 | Move analysis off the request thread | `DocumentService.analyzeAsync` |

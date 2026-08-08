@@ -11,35 +11,40 @@ import java.util.regex.Pattern;
 /**
  * Splits raw contract text into individual clauses.
  *
- * The current strategy is a numbered-heading regex: find lines matching
- * "7. Termination" or "12) Indemnity" and cut the document at each one, falling
- * back to blank-line paragraph splitting when a document has no numbering at
- * all. Accuracy on real contracts is roughly 60%.
+ * Boundaries are numbered lines — "7. Termination", "12) Indemnity", or a bare
+ * numbered paragraph like "1. That, the lessor hereby leases...". A heading is
+ * only recorded when the numbered line is short enough to actually be a title;
+ * many real contracts have none, and Clause.heading is nullable for that reason.
  *
- * Known limitations, tracked as failing tests in ClauseSegmentationServiceTest:
+ * Two rules do most of the work:
  *
- *   1. Sub-clauses. "7.1" and "7.2" are treated as top-level clauses rather
- *      than being merged into clause 7.
- *   2. ALL-CAPS headings. Contracts that write "TERMINATION" with no number
- *      are missed entirely.
- *   3. Citation false positives. "Section 8 of the Companies Act, 2013" looks
- *      like a heading to the regex and wrongly splits the document.
- *   4. Tiny fragments below MIN_CLAUSE_LENGTH are dropped instead of being
- *      merged into the preceding clause.
- *   5. Preamble text before the first heading is discarded.
+ *   SEQUENCE. Candidate boundaries are kept only if their numbers ascend. A
+ *   citation such as "8. of the Companies Act, 2013" appearing inside clause 1
+ *   is discarded because 8 does not follow 1. Implemented by taking the longest
+ *   ascending run rather than trusting every match.
+ *
+ *   WHITESPACE AFTER THE SEPARATOR. Requiring "7." to be followed by a space
+ *   means "7.1" and "7.2" are not boundaries, so sub-clauses stay attached to
+ *   their parent instead of being split out as clauses of their own.
+ *
+ * Text before the first boundary is kept as a preamble clause. Fragments below
+ * MIN_CLAUSE_LENGTH are merged into the preceding clause rather than dropped.
  */
 @Service
 public class ClauseSegmentationService {
 
-    /** Minimum characters for a segment to count as a real clause. */
+    /** Minimum characters for a segment to stand as a clause of its own. */
     private static final int MIN_CLAUSE_LENGTH = 40;
 
     /**
-     * Matches a line starting with a number followed by '.' or ')', then a
-     * capitalised word. e.g. "7. Termination", "12) Indemnity".
+     * Above this length the numbered line is a paragraph, not a title, so no
+     * heading is recorded and the UI falls back to "Clause N".
      */
-    private static final Pattern HEADING = Pattern.compile(
-            "(?m)^\\s*(\\d{1,2})[.)]\\s+([A-Z][^\\n]{2,80})$");
+    private static final int MAX_HEADING_LENGTH = 90;
+
+    /** A line opening with a number, then '.' or ')', then whitespace, then text. */
+    private static final Pattern NUMBERED_LINE =
+            Pattern.compile("(?m)^[ \\t]*(\\d{1,2})[.)][ \\t]+(\\S[^\\n]*)$");
 
     public List<Clause> segment(String text) {
         List<Clause> clauses = new ArrayList<>();
@@ -48,45 +53,89 @@ public class ClauseSegmentationService {
             return clauses;
         }
 
-        Matcher matcher = HEADING.matcher(text);
-        List<int[]> boundaries = new ArrayList<>();
-        List<String> headings = new ArrayList<>();
-
-        while (matcher.find()) {
-            boundaries.add(new int[]{matcher.start(), matcher.end()});
-            headings.add(matcher.group().trim());
-        }
-
-        // No headings found at all: fall back to splitting on blank lines so the
-        // pipeline still produces something rather than failing.
+        List<Boundary> boundaries = findBoundaries(text);
         if (boundaries.isEmpty()) {
             return segmentByParagraph(text);
         }
 
         int order = 0;
+
+        // Preamble: recitals and party details before the first numbered clause.
+        int firstStart = boundaries.get(0).start();
+        String preamble = text.substring(0, firstStart).trim();
+        if (preamble.length() >= MIN_CLAUSE_LENGTH) {
+            clauses.add(new Clause(order++, null, preamble, 0, firstStart));
+        }
+
         for (int i = 0; i < boundaries.size(); i++) {
-            int start = boundaries.get(i)[0];
-            int end = (i + 1 < boundaries.size()) ? boundaries.get(i + 1)[0] : text.length();
+            Boundary boundary = boundaries.get(i);
+            int start = boundary.start();
+            int end = (i + 1 < boundaries.size()) ? boundaries.get(i + 1).start() : text.length();
 
             String body = text.substring(start, end).trim();
-            if (body.length() < MIN_CLAUSE_LENGTH) {
-                // TODO: merge into the previous clause instead of dropping it.
+            if (body.isEmpty()) {
                 continue;
             }
 
-            clauses.add(new Clause(order++, headings.get(i), body, start, end));
-        }
+            // Too short to stand alone: fold it into the previous clause so no
+            // text is silently lost.
+            if (body.length() < MIN_CLAUSE_LENGTH && !clauses.isEmpty()) {
+                Clause previous = clauses.remove(clauses.size() - 1);
+                clauses.add(new Clause(
+                        previous.getOrderIndex(),
+                        previous.getHeading(),
+                        previous.getOriginalText() + "\n" + body,
+                        previous.getStartOffset(),
+                        end));
+                continue;
+            }
 
-        // TODO: capture the preamble (text before boundaries.get(0)[0]) as
-        //       clause 0 when it exceeds MIN_CLAUSE_LENGTH.
+            String heading = boundary.line().length() <= MAX_HEADING_LENGTH ? boundary.line() : null;
+            clauses.add(new Clause(order++, heading, body, start, end));
+        }
 
         return clauses;
     }
 
     /**
-     * Fallback for documents with no recognisable headings: treat each
-     * blank-line-separated block as a clause.
+     * Every numbered line, reduced to the longest run whose numbers ascend.
+     *
+     * Runs are grown from each candidate and the longest wins, so a stray
+     * number early in the document cannot derail the real sequence. A gap of one
+     * is tolerated, which covers a clause whose number failed to extract cleanly.
      */
+    private List<Boundary> findBoundaries(String text) {
+        List<Boundary> candidates = new ArrayList<>();
+        Matcher matcher = NUMBERED_LINE.matcher(text);
+        while (matcher.find()) {
+            candidates.add(new Boundary(
+                    matcher.start(),
+                    Integer.parseInt(matcher.group(1)),
+                    matcher.group().trim()));
+        }
+
+        List<Boundary> best = new ArrayList<>();
+        for (int i = 0; i < candidates.size(); i++) {
+            List<Boundary> run = new ArrayList<>();
+            run.add(candidates.get(i));
+            int last = candidates.get(i).number();
+
+            for (int j = i + 1; j < candidates.size(); j++) {
+                int number = candidates.get(j).number();
+                if (number > last && number <= last + 2) {
+                    run.add(candidates.get(j));
+                    last = number;
+                }
+            }
+
+            if (run.size() > best.size()) {
+                best = run;
+            }
+        }
+        return best;
+    }
+
+    /** Fallback for documents with no numbering: one clause per paragraph. */
     private List<Clause> segmentByParagraph(String text) {
         List<Clause> clauses = new ArrayList<>();
         int order = 0;
@@ -106,5 +155,9 @@ public class ClauseSegmentationService {
             }
         }
         return clauses;
+    }
+
+    /** A candidate clause start: where it begins, its number, and its opening line. */
+    private record Boundary(int start, int number, String line) {
     }
 }
