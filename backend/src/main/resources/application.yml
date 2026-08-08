@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: contractguard
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/contractguard?createDatabaseIfNotExist=true&serverTimezone=UTC
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      # 'update' suits development. Production would use 'validate' plus
+      # versioned migrations (Flyway/Liquibase) so schema changes are reviewable.
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: true
+    show-sql: true
+    open-in-view: false   # avoids lazy-loading in the view layer; see docs/ARCHITECTURE.md
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+server:
+  port: 8080
+
+# --- Application-specific config -------------------------------------------
+contractguard:
+  jwt:
+    # 256-bit secret. Override with the JWT_SECRET env var; never commit a real one.
+    secret: ${JWT_SECRET:Y29udHJhY3RndWFyZC1kZXYtc2VjcmV0LWNoYW5nZS1tZS0zMmJ5dGVz}
+    expiration-ms: 86400000   # 24 hours
+
+  llm:
+    base-url: ${LLM_BASE_URL:https://api.groq.com/openai/v1}
+    api-key: ${LLM_API_KEY:}
+    model: ${LLM_MODEL:llama-3.3-70b-versatile}
+    timeout-seconds: 60
+
+logging:
+  level:
+    com.contractguard: DEBUG

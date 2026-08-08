@@ -1,0 +1,26 @@
+# Dev profile: embedded H2 instead of MySQL.
+#
+# Nothing in the application code changes -- JPA and Hibernate sit between your
+# code and the database, so switching engines is a config change and nothing
+# more. That portability IS the argument for using an ORM, and it is a good
+# thing to be able to demonstrate rather than just assert.
+#
+# Run with:  mvn spring-boot:run -Dspring-boot.run.profiles=dev
+#
+# jdbc:h2:file: stores to backend/data/ so your uploads and analyses survive a
+# restart. Use jdbc:h2:mem: instead if you want a clean slate every run.
+
+spring:
+  datasource:
+    url: jdbc:h2:file:./data/contractguard;MODE=MySQL;DB_CLOSE_DELAY=-1;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+    show-sql: true

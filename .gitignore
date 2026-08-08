@@ -1,0 +1,27 @@
+# Java / Maven
+backend/target/
+backend/uploads/
+*.class
+
+# Node / Angular
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Environment - never commit real keys
+.env
+*.env
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+
+# H2 dev database
+backend/data/
+
+# local run logs
+backend.log

@@ -1,0 +1,23 @@
+# Tests run against in-memory H2, so no MySQL needs to be running.
+spring:
+  datasource:
+    url: jdbc:h2:mem:contractguard;DB_CLOSE_DELAY=-1;MODE=MySQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+contractguard:
+  jwt:
+    secret: dGVzdC1zZWNyZXQtb25seS1mb3ItdW5pdC10ZXN0cy0zMmJ5dGVzIQ==
+    expiration-ms: 3600000
+  llm:
+    base-url: http://localhost:9999
+    api-key: test-key
+    model: test-model
+    timeout-seconds: 5

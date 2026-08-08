@@ -1,0 +1,112 @@
+<div class="page-head">
+  <div>
+    <h1>Your contracts</h1>
+    <p class="muted">Every clause rated and rewritten in plain English.</p>
+  </div>
+
+  <label class="upload-btn">
+    <span class="plus">+</span>
+    {{ uploading() ? 'Analysing…' : 'Upload a PDF' }}
+    <input type="file" accept="application/pdf" hidden
+           [disabled]="uploading()" (change)="onFileSelected($event)" />
+  </label>
+</div>
+
+@if (documents().length > 0) {
+  <section class="stats">
+    <div class="stat">
+      <span class="stat-value">{{ stats().contracts }}</span>
+      <span class="stat-label">Contracts</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">{{ stats().clauses }}</span>
+      <span class="stat-label">Clauses analysed</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value" [class.danger]="stats().risky > 0">{{ stats().risky }}</span>
+      <span class="stat-label">Risky clauses found</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">{{ stats().avg ?? '—' }}</span>
+      <span class="stat-label">Average score</span>
+    </div>
+  </section>
+}
+
+@if (error()) {
+  <div class="banner banner-error"><span>{{ error() }}</span></div>
+}
+
+@if (uploading()) {
+  <app-upload-progress />
+}
+
+<!-- The drop zone wraps the whole list, so a file can be dropped anywhere. -->
+<div class="dropzone" [class.active]="dragging()"
+     (dragover)="onDragOver($event)"
+     (dragleave)="onDragLeave($event)"
+     (drop)="onDrop($event)">
+
+  @if (dragging()) {
+    <div class="drop-hint"><span>Drop the PDF to analyse it</span></div>
+  }
+
+  @if (documents().length === 0 && !uploading()) {
+    <div class="empty">
+      <div class="empty-icon">📄</div>
+      <h2>No contracts yet</h2>
+      <p class="muted">
+        Drag a PDF here, or use the button above. Works on rental agreements,
+        offer letters and NDAs — text-based PDFs, not scans.
+      </p>
+    </div>
+  } @else {
+    <ul class="doc-list">
+      @for (doc of documents(); track doc.id) {
+        <li>
+          <a [routerLink]="['/documents', doc.id]" class="doc-row">
+            <div class="doc-icon">PDF</div>
+
+            <div class="doc-main">
+              <span class="doc-name">{{ doc.filename }}</span>
+              <span class="doc-sub">
+                @if (doc.status === 'COMPLETED') {
+                  {{ doc.clauseCount }} clauses ·
+                }
+                {{ doc.uploadedAt | date: 'd MMM y, HH:mm' }}
+              </span>
+            </div>
+
+            @if (doc.status === 'COMPLETED') {
+              <div class="doc-risk">
+                <app-risk-bar
+                  [risky]="doc.riskyCount"
+                  [moderate]="doc.moderateCount"
+                  [safe]="doc.safeCount"
+                  [unknown]="doc.clauseCount - doc.riskyCount - doc.moderateCount - doc.safeCount" />
+                <span class="risk-caption">
+                  @if (doc.riskyCount > 0) {
+                    <b class="danger">{{ doc.riskyCount }} risky</b>
+                  } @else if (doc.moderateCount > 0) {
+                    {{ doc.moderateCount }} to review
+                  } @else {
+                    No concerns
+                  }
+                </span>
+              </div>
+
+              <span [class]="'score-chip ' + scoreClass(doc.overallScore)">
+                {{ doc.overallScore }}<small>/100</small>
+              </span>
+            } @else {
+              <span class="status-chip">{{ doc.status }}</span>
+            }
+
+            <button type="button" class="link-btn" (click)="remove(doc.id, $event)"
+                    aria-label="Delete document">Delete</button>
+          </a>
+        </li>
+      }
+    </ul>
+  }
+</div>

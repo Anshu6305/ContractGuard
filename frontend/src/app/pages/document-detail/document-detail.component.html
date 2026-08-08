@@ -1,0 +1,92 @@
+<a routerLink="/documents" class="back">← All contracts</a>
+
+@if (error()) {
+  <div class="banner banner-error"><span>{{ error() }}</span></div>
+}
+
+@if (document(); as doc) {
+  <div class="page-head">
+    <div>
+      <h1>{{ doc.filename }}</h1>
+      <p class="muted">{{ doc.clauses.length }} clauses analysed</p>
+    </div>
+  </div>
+
+  @if (doc.status === 'FAILED') {
+    <div class="banner banner-error">
+      <span><strong>Analysis failed.</strong> {{ doc.failureReason }}</span>
+    </div>
+  }
+
+  @if (doc.status === 'COMPLETED') {
+
+    <section class="summary">
+      <app-score-ring [score]="doc.overallScore" />
+
+      <app-risk-donut
+        [safe]="counts().safe"
+        [moderate]="counts().moderate"
+        [risky]="counts().risky"
+        [unknown]="counts().unknown" />
+
+      <p class="verdict-text">{{ verdict() }}</p>
+    </section>
+
+    @if (counts().risky > 0) {
+      <div class="banner banner-warn">
+        <span>
+          <strong>{{ counts().risky }} clause(s) need your attention</strong>
+          before you sign this.
+        </span>
+      </div>
+    }
+
+    <div class="filters">
+      <button type="button" (click)="setFilter('ALL')" [class.active]="filter() === 'ALL'">
+        All ({{ doc.clauses.length }})
+      </button>
+      <button type="button" (click)="setFilter('RISKY')" [class.active]="filter() === 'RISKY'">
+        Risky ({{ counts().risky }})
+      </button>
+      <button type="button" (click)="setFilter('MODERATE')" [class.active]="filter() === 'MODERATE'">
+        Moderate ({{ counts().moderate }})
+      </button>
+      <button type="button" (click)="setFilter('SAFE')" [class.active]="filter() === 'SAFE'">
+        Safe ({{ counts().safe }})
+      </button>
+    </div>
+
+    <ul class="clause-list">
+      @for (clause of visibleClauses(); track clause.id) {
+        <li [class]="'clause-card ' + riskClass(clause.riskLevel)">
+          <button type="button" class="clause-head" (click)="toggle(clause)">
+            <span class="pill">{{ clause.riskLevel }}</span>
+            <span class="clause-title">
+              {{ clause.heading ?? 'Clause ' + (clause.orderIndex + 1) }}
+            </span>
+            <span class="chevron" [class.open]="expandedId() === clause.id">▶</span>
+          </button>
+
+          @if (clause.plainSummary) {
+            <p class="summary-text">{{ clause.plainSummary }}</p>
+          }
+
+          @if (expandedId() === clause.id) {
+            <div class="detail">
+              @if (clause.rationale) {
+                <p class="rationale"><strong>Why this rating:</strong> {{ clause.rationale }}</p>
+              }
+              <pre class="original">{{ clause.originalText }}</pre>
+            </div>
+          }
+        </li>
+      }
+    </ul>
+
+    <p class="disclaimer">
+      ContractGuard is an automated tool and can be wrong in both directions —
+      it may miss an unfair clause, or flag a normal one. It is not legal advice.
+      For anything that matters, have a lawyer read the contract.
+    </p>
+  }
+}
